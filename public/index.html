@@ -115,7 +115,7 @@
 <!-- Socket.io client, served automatically by the socket.io server -->
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io();
+const socket = io('https://codexianb1.onrender.com');
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
@@ -136,9 +136,8 @@ let peerConnection = null;
 let currentPeerId = null;
 let isMuted = false;
 let isCameraOff = false;
-let currentFacingMode = 'user'; // 'user' = front camera, 'environment' = back camera
+let currentFacingMode = 'user';
 
-// --- TURN SERVER CONFIG ---
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.relay.metered.ca:80' },
