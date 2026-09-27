@@ -76,6 +76,71 @@
     position:absolute; top: calc(env(safe-area-inset-top,0px) + 20px);
     font-size: 15px; font-weight:600; color: var(--text-dim); letter-spacing:0.5px;
   }
+
+  /* ---------- Persistent status bar (online count + country picker) ---------- */
+  .status-bar{
+    position:absolute; top:0; left:0; right:0; z-index:12;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: calc(env(safe-area-inset-top,0px) + 14px) 16px 0;
+  }
+  .online-pill{
+    display:flex; align-items:center; gap:6px;
+    padding: 7px 12px; border-radius:999px;
+    background: rgba(20,20,22,0.6);
+    font-size:13px; font-weight:600; color:#fff;
+  }
+  .online-dot{
+    width:8px; height:8px; border-radius:50%; background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse-dot 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+  .country-btn{
+    display:flex; align-items:center; gap:6px;
+    padding: 7px 12px; border-radius:999px; border:none;
+    background: rgba(20,20,22,0.6); color:#fff;
+    font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .country-btn svg{ width:16px; height:16px; }
+  .country-btn .flag{ font-size:15px; line-height:1; }
+
+  /* ---------- Country picker overlay ---------- */
+  .country-picker{
+    position:absolute; inset:0; z-index:30;
+    background: #131314;
+    display:flex; flex-direction:column;
+  }
+  .country-picker.hidden{ display:none; }
+  .country-picker__header{
+    display:flex; align-items:center; gap:10px;
+    padding: calc(env(safe-area-inset-top,0px) + 16px) 16px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .country-picker__header h2{ margin:0; font-size:17px; flex:1; }
+  .country-picker__header button{
+    background:none; border:none; color:var(--text-dim); width:32px; height:32px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .country-picker__header button svg{ width:20px; height:20px; }
+  .country-search{
+    margin: 12px 16px; padding: 10px 14px; border-radius:12px; border:none;
+    background: #2c2c2e; color:var(--text); font-size:15px;
+  }
+  .country-search:focus{ outline: 2px solid var(--accent-blue); }
+  .country-list{
+    flex:1; overflow-y:auto; padding: 0 8px calc(env(safe-area-inset-bottom,0px) + 16px);
+  }
+  .country-item{
+    display:flex; align-items:center; gap:12px; width:100%;
+    padding: 12px 10px; border:none; background:none; color:var(--text);
+    font-size:15px; text-align:left; cursor:pointer; border-radius:10px;
+  }
+  .country-item:active{ background: rgba(255,255,255,0.08); }
+  .country-item .flag{ font-size:20px; width:28px; text-align:center; }
+  .country-item.selected{ color: var(--accent); font-weight:600; }
+  .country-item.selected::after{
+    content:"✓"; margin-left:auto; font-weight:700;
+  }
   .idle-title{ font-size:22px; font-weight:600; }
   .idle-sub{ font-size:14px; color:var(--text-dim); max-width:280px; }
 
@@ -205,6 +270,18 @@
 
   <div class="brand">🌐 Codexianb</div>
 
+  <!-- Persistent status bar: online count + country picker -->
+  <div class="status-bar">
+    <div class="online-pill">
+      <span class="online-dot"></span>
+      <span id="onlineCount">--</span> online
+    </div>
+    <button id="countryBtn" class="country-btn" aria-label="Choose region">
+      <span class="flag" id="countryFlag">🌍</span>
+      <span id="countryLabel">Any country</span>
+    </button>
+  </div>
+
   <!-- IDLE -->
   <div id="idleScreen" class="overlay-screen">
     <div class="idle-title">Start a random video call</div>
@@ -277,6 +354,18 @@
       </button>
     </div>
   </div>
+
+  <!-- COUNTRY PICKER (fullscreen) -->
+  <div id="countryPicker" class="country-picker hidden">
+    <div class="country-picker__header">
+      <h2>Choose a country</h2>
+      <button id="closeCountryBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+      </button>
+    </div>
+    <input id="countrySearch" class="country-search" type="text" placeholder="Search country..." />
+    <div id="countryList" class="country-list"></div>
+  </div>
 </div>
 
 <!-- Socket.io client loaded from CDN (needed since Netlify serves this page as static, not the Express/Render server) -->
@@ -304,12 +393,130 @@ const cameraBtn = document.getElementById('cameraBtn');
 const switchCamBtn = document.getElementById('switchCamBtn');
 const reportBtn = document.getElementById('reportBtn');
 
+const onlineCountEl = document.getElementById('onlineCount');
+const countryBtn = document.getElementById('countryBtn');
+const countryFlag = document.getElementById('countryFlag');
+const countryLabel = document.getElementById('countryLabel');
+const countryPicker = document.getElementById('countryPicker');
+const closeCountryBtn = document.getElementById('closeCountryBtn');
+const countrySearch = document.getElementById('countrySearch');
+const countryList = document.getElementById('countryList');
+
 const chatToggleBtn = document.getElementById('chatToggleBtn');
 const closeChatBtn = document.getElementById('closeChatBtn');
 const chatPanel = document.getElementById('chatPanel');
 const messagesEl = document.getElementById('messages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
+
+/* ---------------- Countries + online counter ---------------- */
+// ISO 3166-1 alpha-2 codes + names. Flag emoji is derived from the code itself
+// (regional indicator symbols), so we don't need to store an emoji per row.
+const COUNTRIES = [
+  ["AF","Afghanistan"],["AL","Albania"],["DZ","Algeria"],["AD","Andorra"],["AO","Angola"],
+  ["AR","Argentina"],["AM","Armenia"],["AU","Australia"],["AT","Austria"],["AZ","Azerbaijan"],
+  ["BS","Bahamas"],["BH","Bahrain"],["BD","Bangladesh"],["BB","Barbados"],["BY","Belarus"],
+  ["BE","Belgium"],["BZ","Belize"],["BJ","Benin"],["BT","Bhutan"],["BO","Bolivia"],
+  ["BA","Bosnia and Herzegovina"],["BW","Botswana"],["BR","Brazil"],["BN","Brunei"],["BG","Bulgaria"],
+  ["BF","Burkina Faso"],["BI","Burundi"],["KH","Cambodia"],["CM","Cameroon"],["CA","Canada"],
+  ["CV","Cabo Verde"],["CF","Central African Republic"],["TD","Chad"],["CL","Chile"],["CN","China"],
+  ["CO","Colombia"],["KM","Comoros"],["CG","Congo"],["CD","Congo (DRC)"],["CR","Costa Rica"],
+  ["HR","Croatia"],["CU","Cuba"],["CY","Cyprus"],["CZ","Czech Republic"],["DK","Denmark"],
+  ["DJ","Djibouti"],["DM","Dominica"],["DO","Dominican Republic"],["EC","Ecuador"],["EG","Egypt"],
+  ["SV","El Salvador"],["GQ","Equatorial Guinea"],["ER","Eritrea"],["EE","Estonia"],["SZ","Eswatini"],
+  ["ET","Ethiopia"],["FJ","Fiji"],["FI","Finland"],["FR","France"],["GA","Gabon"],
+  ["GM","Gambia"],["GE","Georgia"],["DE","Germany"],["GH","Ghana"],["GR","Greece"],
+  ["GD","Grenada"],["GT","Guatemala"],["GN","Guinea"],["GW","Guinea-Bissau"],["GY","Guyana"],
+  ["HT","Haiti"],["HN","Honduras"],["HK","Hong Kong"],["HU","Hungary"],["IS","Iceland"],
+  ["IN","India"],["ID","Indonesia"],["IR","Iran"],["IQ","Iraq"],["IE","Ireland"],
+  ["IL","Israel"],["IT","Italy"],["JM","Jamaica"],["JP","Japan"],["JO","Jordan"],
+  ["KZ","Kazakhstan"],["KE","Kenya"],["KI","Kiribati"],["KW","Kuwait"],["KG","Kyrgyzstan"],
+  ["LA","Laos"],["LV","Latvia"],["LB","Lebanon"],["LS","Lesotho"],["LR","Liberia"],
+  ["LY","Libya"],["LI","Liechtenstein"],["LT","Lithuania"],["LU","Luxembourg"],["MO","Macau"],
+  ["MG","Madagascar"],["MW","Malawi"],["MY","Malaysia"],["MV","Maldives"],["ML","Mali"],
+  ["MT","Malta"],["MH","Marshall Islands"],["MR","Mauritania"],["MU","Mauritius"],["MX","Mexico"],
+  ["FM","Micronesia"],["MD","Moldova"],["MC","Monaco"],["MN","Mongolia"],["ME","Montenegro"],
+  ["MA","Morocco"],["MZ","Mozambique"],["MM","Myanmar"],["NA","Namibia"],["NR","Nauru"],
+  ["NP","Nepal"],["NL","Netherlands"],["NZ","New Zealand"],["NI","Nicaragua"],["NE","Niger"],
+  ["NG","Nigeria"],["KP","North Korea"],["MK","North Macedonia"],["NO","Norway"],["OM","Oman"],
+  ["PK","Pakistan"],["PW","Palau"],["PS","Palestine"],["PA","Panama"],["PG","Papua New Guinea"],
+  ["PY","Paraguay"],["PE","Peru"],["PH","Philippines"],["PL","Poland"],["PT","Portugal"],
+  ["QA","Qatar"],["RO","Romania"],["RU","Russia"],["RW","Rwanda"],["KN","Saint Kitts and Nevis"],
+  ["LC","Saint Lucia"],["WS","Samoa"],["SM","San Marino"],["SA","Saudi Arabia"],["SN","Senegal"],
+  ["RS","Serbia"],["SC","Seychelles"],["SL","Sierra Leone"],["SG","Singapore"],["SK","Slovakia"],
+  ["SI","Slovenia"],["SB","Solomon Islands"],["SO","Somalia"],["ZA","South Africa"],["KR","South Korea"],
+  ["SS","South Sudan"],["ES","Spain"],["LK","Sri Lanka"],["SD","Sudan"],["SR","Suriname"],
+  ["SE","Sweden"],["CH","Switzerland"],["SY","Syria"],["TW","Taiwan"],["TJ","Tajikistan"],
+  ["TZ","Tanzania"],["TH","Thailand"],["TL","Timor-Leste"],["TG","Togo"],["TO","Tonga"],
+  ["TT","Trinidad and Tobago"],["TN","Tunisia"],["TR","Turkey"],["TM","Turkmenistan"],["TV","Tuvalu"],
+  ["UG","Uganda"],["UA","Ukraine"],["AE","United Arab Emirates"],["GB","United Kingdom"],["US","United States"],
+  ["UY","Uruguay"],["UZ","Uzbekistan"],["VU","Vanuatu"],["VA","Vatican City"],["VE","Venezuela"],
+  ["VN","Vietnam"],["YE","Yemen"],["ZM","Zambia"],["ZW","Zimbabwe"]
+];
+
+function flagEmoji(code) {
+  return code.toUpperCase().replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
+let selectedCountry = localStorage.getItem('preferredCountry') || 'ANY';
+
+function setCountryButtonLabel() {
+  if (selectedCountry === 'ANY') {
+    countryFlag.textContent = '🌍';
+    countryLabel.textContent = 'Any country';
+  } else {
+    const row = COUNTRIES.find((c) => c[0] === selectedCountry);
+    countryFlag.textContent = flagEmoji(selectedCountry);
+    countryLabel.textContent = row ? row[1] : selectedCountry;
+  }
+}
+
+function renderCountryList(filterText) {
+  const q = (filterText || '').trim().toLowerCase();
+  countryList.innerHTML = '';
+
+  const anyBtn = document.createElement('button');
+  anyBtn.className = 'country-item' + (selectedCountry === 'ANY' ? ' selected' : '');
+  anyBtn.innerHTML = '<span class="flag">🌍</span><span>Any country (worldwide)</span>';
+  anyBtn.addEventListener('click', () => selectCountry('ANY'));
+  if (!q || 'any country worldwide'.includes(q)) countryList.appendChild(anyBtn);
+
+  COUNTRIES
+    .filter(([, name]) => !q || name.toLowerCase().includes(q))
+    .forEach(([code, name]) => {
+      const btn = document.createElement('button');
+      btn.className = 'country-item' + (selectedCountry === code ? ' selected' : '');
+      btn.innerHTML = `<span class="flag">${flagEmoji(code)}</span><span>${name}</span>`;
+      btn.addEventListener('click', () => selectCountry(code));
+      countryList.appendChild(btn);
+    });
+}
+
+function selectCountry(code) {
+  selectedCountry = code;
+  localStorage.setItem('preferredCountry', code);
+  setCountryButtonLabel();
+  countryPicker.classList.add('hidden');
+}
+
+function emitFindPeer() {
+  socket.emit('find-peer', { country: selectedCountry });
+}
+
+countryBtn.addEventListener('click', () => {
+  countrySearch.value = '';
+  renderCountryList('');
+  countryPicker.classList.remove('hidden');
+  countrySearch.focus();
+});
+closeCountryBtn.addEventListener('click', () => countryPicker.classList.add('hidden'));
+countrySearch.addEventListener('input', () => renderCountryList(countrySearch.value));
+
+setCountryButtonLabel();
+
+socket.on('active-users', (count) => {
+  onlineCountEl.textContent = count;
+});
 
 let localStream = null;
 let peerConnection = null;
@@ -481,7 +688,7 @@ socket.on('partner-left', () => {
   cleanupConnection();
   if (localStream) {
     showSearching('Stranger left. Looking for someone new...');
-    socket.emit('find-peer');
+    emitFindPeer();
   } else {
     showIdle();
   }
@@ -518,7 +725,7 @@ startBtn.addEventListener('click', async () => {
   }
   showSearching('Looking for a stranger...');
   enableLocalMediaControls(true);
-  socket.emit('find-peer');
+  emitFindPeer();
 });
 
 cancelSearchBtn.addEventListener('click', () => {
@@ -537,7 +744,7 @@ nextBtn.addEventListener('click', () => {
   cleanupConnection();
   messagesEl.innerHTML = '';
   showSearching('Looking for a new stranger...');
-  socket.emit('find-peer');
+  emitFindPeer();
 });
 
 stopBtn.addEventListener('click', () => {
@@ -620,7 +827,7 @@ reportBtn.addEventListener('click', () => {
   logMsg('Report submitted. Finding a new stranger...', 'sys');
   cleanupConnection();
   showSearching('Finding a new stranger...');
-  socket.emit('find-peer');
+  emitFindPeer();
 });
 
 chatToggleBtn.addEventListener('click', () => {
