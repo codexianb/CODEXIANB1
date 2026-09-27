@@ -23,7 +23,6 @@ function isCompatible(a, b) {
 }
 
 function tryMatch() {
-  // Drop any entries whose socket has since disconnected.
   waitingQueue = waitingQueue.filter((entry) => io.sockets.sockets.has(entry.id));
 
   for (let i = 0; i < waitingQueue.length; i++) {
@@ -42,7 +41,7 @@ function tryMatch() {
       io.to(entry.id).emit('matched', { peerId: other.id, initiator: true });
       io.to(other.id).emit('matched', { peerId: entry.id, initiator: false });
 
-      tryMatch(); // keep matching whoever is left
+      tryMatch();
       return;
     }
   }
