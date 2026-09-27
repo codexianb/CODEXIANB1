@@ -10,25 +10,41 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Each waiting entry: { id: socket.id, country: 'ANY' | 'PH' | 'US' | ... }
 let waitingQueue = [];
 const partners = new Map();
 
+function broadcastActiveUsers() {
+  io.emit('active-users', io.sockets.sockets.size);
+}
+
+function isCompatible(a, b) {
+  return a.country === 'ANY' || b.country === 'ANY' || a.country === b.country;
+}
+
 function tryMatch() {
-  while (waitingQueue.length >= 2) {
-    const a = waitingQueue.shift();
-    const b = waitingQueue.shift();
+  // Drop any entries whose socket has since disconnected.
+  waitingQueue = waitingQueue.filter((entry) => io.sockets.sockets.has(entry.id));
 
-    if (!io.sockets.sockets.has(a) || !io.sockets.sockets.has(b)) {
-      if (io.sockets.sockets.has(a)) waitingQueue.unshift(a);
-      if (io.sockets.sockets.has(b)) waitingQueue.unshift(b);
-      continue;
+  for (let i = 0; i < waitingQueue.length; i++) {
+    const entry = waitingQueue[i];
+    const matchIdx = waitingQueue.findIndex(
+      (other, j) => j !== i && isCompatible(entry, other)
+    );
+
+    if (matchIdx !== -1) {
+      const other = waitingQueue[matchIdx];
+      waitingQueue = waitingQueue.filter((e) => e.id !== entry.id && e.id !== other.id);
+
+      partners.set(entry.id, other.id);
+      partners.set(other.id, entry.id);
+
+      io.to(entry.id).emit('matched', { peerId: other.id, initiator: true });
+      io.to(other.id).emit('matched', { peerId: entry.id, initiator: false });
+
+      tryMatch(); // keep matching whoever is left
+      return;
     }
-
-    partners.set(a, b);
-    partners.set(b, a);
-
-    io.to(a).emit('matched', { peerId: b, initiator: true });
-    io.to(b).emit('matched', { peerId: a, initiator: false });
   }
 }
 
@@ -43,18 +59,19 @@ function disconnectPartner(socketId, reason) {
 
 io.on('connection', (socket) => {
   console.log('connected:', socket.id);
+  broadcastActiveUsers();
 
-  socket.on('find-peer', () => {
+  socket.on('find-peer', (payload = {}) => {
+    const country = typeof payload.country === 'string' && payload.country ? payload.country : 'ANY';
     disconnectPartner(socket.id, 'requeued');
-    if (!waitingQueue.includes(socket.id)) {
-      waitingQueue.push(socket.id);
-    }
+    waitingQueue = waitingQueue.filter((e) => e.id !== socket.id);
+    waitingQueue.push({ id: socket.id, country });
     tryMatch();
   });
 
   socket.on('leave', () => {
     disconnectPartner(socket.id, 'left');
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+    waitingQueue = waitingQueue.filter((e) => e.id !== socket.id);
   });
 
   socket.on('offer', ({ target, offer }) => {
@@ -82,7 +99,8 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('disconnected:', socket.id);
     disconnectPartner(socket.id, 'disconnected');
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+    waitingQueue = waitingQueue.filter((e) => e.id !== socket.id);
+    broadcastActiveUsers();
   });
 });
 
