@@ -44,6 +44,10 @@
   #startBtn { background: #4ade80; }
   #nextBtn { background: #60a5fa; }
   #stopBtn { background: #f87171; }
+  #muteBtn, #cameraBtn, #switchCamBtn { background: #444; color: #eee; font-size: 13px; }
+  #muteBtn.active, #cameraBtn.active { background: #f59e0b; color: #111; }
+  #reportBtn { background: #7f1d1d; color: #eee; font-size: 13px; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   #status { text-align: center; color: #999; margin-bottom: 10px; }
 
   .chatBox {
@@ -93,6 +97,13 @@
   <button id="stopBtn" disabled>Stop</button>
 </div>
 
+<div class="controls">
+  <button id="muteBtn" disabled>🎤 Mute</button>
+  <button id="cameraBtn" disabled>📹 Camera Off</button>
+  <button id="switchCamBtn" disabled>🔄 Switch Camera</button>
+  <button id="reportBtn" disabled>🚩 Report</button>
+</div>
+
 <div class="chatBox">
   <div id="messages"></div>
   <div class="chatInput">
@@ -111,6 +122,10 @@ const remoteVideo = document.getElementById('remoteVideo');
 const startBtn = document.getElementById('startBtn');
 const nextBtn = document.getElementById('nextBtn');
 const stopBtn = document.getElementById('stopBtn');
+const muteBtn = document.getElementById('muteBtn');
+const cameraBtn = document.getElementById('cameraBtn');
+const switchCamBtn = document.getElementById('switchCamBtn');
+const reportBtn = document.getElementById('reportBtn');
 const statusEl = document.getElementById('status');
 const messagesEl = document.getElementById('messages');
 const chatInput = document.getElementById('chatInput');
@@ -119,15 +134,34 @@ const sendBtn = document.getElementById('sendBtn');
 let localStream = null;
 let peerConnection = null;
 let currentPeerId = null;
+let isMuted = false;
+let isCameraOff = false;
+let currentFacingMode = 'user'; // 'user' = front camera, 'environment' = back camera
 
-// --- IMPORTANT ---
-// Add your own TURN server credentials here for production use.
-// Public STUN alone will fail for a meaningful % of real-world users
-// behind strict NATs / corporate firewalls.
+// --- TURN SERVER CONFIG ---
 const rtcConfig = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }
-    // { urls: 'turn:your-turn-server.com:3478', username: 'user', credential: 'pass' }
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: 'turn:global.relay.metered.ca:80',
+      username: 'ba5bc2c88d309320638057a5',
+      credential: '5rdu5POjfqZN8x9q'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username: 'ba5bc2c88d309320638057a5',
+      credential: '5rdu5POjfqZN8x9q'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: 'ba5bc2c88d309320638057a5',
+      credential: '5rdu5POjfqZN8x9q'
+    },
+    {
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username: 'ba5bc2c88d309320638057a5',
+      credential: '5rdu5POjfqZN8x9q'
+    }
   ]
 };
 
@@ -175,8 +209,6 @@ async function startAsInitiator(peerId) {
   socket.emit('offer', { target: peerId, offer });
 }
 
-// --- Socket events ---
-
 socket.on('matched', async ({ peerId, initiator }) => {
   currentPeerId = peerId;
   statusEl.textContent = 'Connected to a stranger!';
@@ -185,6 +217,10 @@ socket.on('matched', async ({ peerId, initiator }) => {
   stopBtn.disabled = false;
   chatInput.disabled = false;
   sendBtn.disabled = false;
+  muteBtn.disabled = false;
+  cameraBtn.disabled = false;
+  switchCamBtn.disabled = false;
+  reportBtn.disabled = false;
 
   if (initiator) {
     await startAsInitiator(peerId);
@@ -221,9 +257,19 @@ socket.on('partner-left', () => {
   logMsg('Stranger has disconnected.', 'sys');
   statusEl.textContent = 'Stranger left. Click "Next Stranger" to find someone new.';
   cleanupConnection();
+  disableCallControls();
 });
 
-// --- UI actions ---
+socket.on('report-received', () => {
+  logMsg('Your report was submitted. Connecting you to someone new...', 'sys');
+});
+
+function disableCallControls() {
+  muteBtn.disabled = true;
+  cameraBtn.disabled = true;
+  switchCamBtn.disabled = true;
+  reportBtn.disabled = true;
+}
 
 function cleanupConnection() {
   if (peerConnection) {
@@ -264,7 +310,64 @@ stopBtn.addEventListener('click', () => {
   stopBtn.disabled = true;
   chatInput.disabled = true;
   sendBtn.disabled = true;
+  disableCallControls();
+  isMuted = false;
+  isCameraOff = false;
+  muteBtn.textContent = '🎤 Mute';
+  muteBtn.classList.remove('active');
+  cameraBtn.textContent = '📹 Camera Off';
+  cameraBtn.classList.remove('active');
   messagesEl.innerHTML = '';
+});
+
+muteBtn.addEventListener('click', () => {
+  if (!localStream) return;
+  isMuted = !isMuted;
+  localStream.getAudioTracks().forEach((track) => (track.enabled = !isMuted));
+  muteBtn.textContent = isMuted ? '🔇 Unmute' : '🎤 Mute';
+  muteBtn.classList.toggle('active', isMuted);
+});
+
+cameraBtn.addEventListener('click', () => {
+  if (!localStream) return;
+  isCameraOff = !isCameraOff;
+  localStream.getVideoTracks().forEach((track) => (track.enabled = !isCameraOff));
+  cameraBtn.textContent = isCameraOff ? '📹 Camera On' : '📹 Camera Off';
+  cameraBtn.classList.toggle('active', isCameraOff);
+});
+
+switchCamBtn.addEventListener('click', async () => {
+  if (!localStream || !peerConnection) return;
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode },
+      audio: true
+    });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const sender = peerConnection.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (sender) await sender.replaceTrack(newVideoTrack);
+
+    const oldVideoTrack = localStream.getVideoTracks()[0];
+    if (oldVideoTrack) oldVideoTrack.stop();
+    localStream.removeTrack(oldVideoTrack);
+    localStream.addTrack(newVideoTrack);
+    localVideo.srcObject = localStream;
+  } catch (err) {
+    console.error('Error switching camera', err);
+    logMsg('Could not switch camera on this device.', 'sys');
+  }
+});
+
+reportBtn.addEventListener('click', () => {
+  if (!currentPeerId) return;
+  const confirmed = confirm('Report this stranger for inappropriate behavior and skip to a new match?');
+  if (!confirmed) return;
+  socket.emit('report-user', { target: currentPeerId });
+  logMsg('Report submitted. Finding a new stranger...', 'sys');
+  cleanupConnection();
+  disableCallControls();
+  socket.emit('find-peer');
 });
 
 sendBtn.addEventListener('click', sendChat);
