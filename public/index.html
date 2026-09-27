@@ -260,11 +260,46 @@
     z-index:7; display:flex; flex-direction:column; align-items:center; gap:14px;
     padding: 22px 26px; border-radius:18px; background: rgba(0,0,0,0.55);
   }
+
+  /* ---------- Age-gate / banned full-screen modals ---------- */
+  .gate-screen{
+    position:absolute; inset:0; z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; text-align:center; padding: 32px;
+    background: #0d0d0e;
+  }
+  .gate-screen h2{ font-size:20px; margin:0; }
+  .gate-screen p{ font-size:14px; color:var(--text-dim); max-width:320px; margin:0; line-height:1.5; }
+  .gate-screen a{ color: var(--accent-blue); }
+  .gate-actions{ display:flex; gap:10px; margin-top:6px; }
+  .gate-btn{
+    padding: 12px 22px; border-radius:12px; border:none; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .gate-btn--accept{ background: var(--accent); color:#0b3d1f; }
+  .gate-btn--decline{ background: var(--icon-btn); color:#fff; }
+  .gate-screen.banned h2{ color: var(--danger); }
 </style>
 </head>
 <body>
 
 <div id="app">
+  <!-- AGE GATE (shown once per browser until accepted) -->
+  <div id="ageGate" class="gate-screen hidden">
+    <h2>You must be 18+ to continue</h2>
+    <p>Codexianb connects you with random strangers over live video. By continuing you confirm you are at least 18 years old and agree to the <a href="/terms.html" target="_blank">Terms of Service</a>.</p>
+    <div class="gate-actions">
+      <button id="ageDeclineBtn" class="gate-btn gate-btn--decline">Leave</button>
+      <button id="ageAcceptBtn" class="gate-btn gate-btn--accept">I'm 18+, continue</button>
+    </div>
+  </div>
+
+  <!-- BANNED SCREEN -->
+  <div id="bannedScreen" class="gate-screen banned hidden">
+    <h2>You've been banned</h2>
+    <p id="bannedReason">A violation of our Terms of Service was detected on this connection.</p>
+    <p id="bannedExpiry"></p>
+  </div>
+
   <video id="remoteVideo" autoplay playsinline></video>
   <video id="localVideo" autoplay muted playsinline></video>
 
@@ -376,6 +411,13 @@ const socket = io('https://codexianb1.onrender.com', {
 });
 
 // Elements
+const ageGate = document.getElementById('ageGate');
+const ageAcceptBtn = document.getElementById('ageAcceptBtn');
+const ageDeclineBtn = document.getElementById('ageDeclineBtn');
+const bannedScreen = document.getElementById('bannedScreen');
+const bannedReasonEl = document.getElementById('bannedReason');
+const bannedExpiryEl = document.getElementById('bannedExpiry');
+
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const idleScreen = document.getElementById('idleScreen');
@@ -413,6 +455,8 @@ const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 
 /* ---------------- Countries + online counter ---------------- */
+// ISO 3166-1 alpha-2 codes + names. Flag emoji is derived from the code itself
+// (regional indicator symbols), so we don't need to store an emoji per row.
 const COUNTRIES = [
   ["AF","Afghanistan"],["AL","Albania"],["DZ","Algeria"],["AD","Andorra"],["AO","Angola"],
   ["AR","Argentina"],["AM","Armenia"],["AU","Australia"],["AT","Austria"],["AZ","Azerbaijan"],
@@ -514,6 +558,36 @@ closeCountryBtn.addEventListener('click', () => countryPicker.classList.add('hid
 countrySearch.addEventListener('input', () => renderCountryList(countrySearch.value));
 
 setCountryButtonLabel();
+
+/* ---------------- Age gate ---------------- */
+// Client-side gate only — a real deployment also needs a legal/ToS review
+// and, if required in your jurisdiction, a proper age-verification vendor.
+// This stops casual/accidental access, not a determined minor.
+if (!localStorage.getItem('ageConfirmed18')) {
+  ageGate.classList.remove('hidden');
+}
+ageAcceptBtn.addEventListener('click', () => {
+  localStorage.setItem('ageConfirmed18', '1');
+  ageGate.classList.add('hidden');
+});
+ageDeclineBtn.addEventListener('click', () => {
+  window.location.href = 'https://www.google.com';
+});
+
+/* ---------------- Ban handling ---------------- */
+socket.on('banned', ({ reason, expiresAt, permanent }) => {
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+  cleanupConnection();
+  [idleScreen, searchingScreen, topBar, controlBar, chatPanel, statusBar].forEach((el) => el.classList.add('hidden'));
+  bannedReasonEl.textContent = reason || 'A violation of our Terms of Service was detected on this connection.';
+  bannedExpiryEl.textContent = permanent
+    ? 'This ban does not expire.'
+    : `This ban lifts on ${new Date(expiresAt).toLocaleString()}.`;
+  bannedScreen.classList.remove('hidden');
+});
 
 socket.on('active-users', (count) => {
   onlineCountEl.textContent = count;
@@ -795,13 +869,18 @@ switchCamBtn.addEventListener('click', async () => {
 
   try {
     const oldVideoTrack = localStream.getVideoTracks()[0];
+    // Release the current camera BEFORE requesting the other one - most phones
+    // can't keep the front and back camera open at the same time.
     if (oldVideoTrack) oldVideoTrack.stop();
 
+    // Only request video here - re-requesting audio too was fighting with the
+    // mic track already in use and was the main reason switching kept failing.
     const newStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: currentFacingMode } }
     });
     const newVideoTrack = newStream.getVideoTracks()[0];
 
+    // Preserve the current camera-off state on the new track.
     newVideoTrack.enabled = !isCameraOff;
 
     if (peerConnection) {
