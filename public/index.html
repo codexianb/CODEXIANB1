@@ -112,8 +112,8 @@
   </div>
 </div>
 
-<!-- Socket.io client, served automatically by the socket.io server -->
-<script src="/socket.io/socket.io.js"></script>
+<!-- Socket.io client loaded from CDN (needed since Netlify serves this page as static, not the Express/Render server) -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 const socket = io('https://codexianb1.onrender.com');
 
