@@ -13,10 +13,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Users waiting to be matched
 let waitingQueue = [];
-
-// Map of socket.id -> partner socket.id (active pairs)
 const partners = new Map();
 
 function tryMatch() {
@@ -24,7 +21,6 @@ function tryMatch() {
     const a = waitingQueue.shift();
     const b = waitingQueue.shift();
 
-    // Guard against stale/disconnected sockets sitting in the queue
     if (!io.sockets.sockets.has(a) || !io.sockets.sockets.has(b)) {
       if (io.sockets.sockets.has(a)) waitingQueue.unshift(a);
       if (io.sockets.sockets.has(b)) waitingQueue.unshift(b);
@@ -34,7 +30,6 @@ function tryMatch() {
     partners.set(a, b);
     partners.set(b, a);
 
-    // Tell 'a' to be the initiator (creates the offer)
     io.to(a).emit('matched', { peerId: b, initiator: true });
     io.to(b).emit('matched', { peerId: a, initiator: false });
   }
@@ -53,9 +48,7 @@ io.on('connection', (socket) => {
   console.log('connected:', socket.id);
 
   socket.on('find-peer', () => {
-    // Clean up any previous pairing first
     disconnectPartner(socket.id, 'requeued');
-
     if (!waitingQueue.includes(socket.id)) {
       waitingQueue.push(socket.id);
     }
@@ -67,7 +60,6 @@ io.on('connection', (socket) => {
     waitingQueue = waitingQueue.filter((id) => id !== socket.id);
   });
 
-  // --- WebRTC signaling relay ---
   socket.on('offer', ({ target, offer }) => {
     io.to(target).emit('offer', { from: socket.id, offer });
   });
@@ -80,9 +72,14 @@ io.on('connection', (socket) => {
     io.to(target).emit('ice-candidate', { from: socket.id, candidate });
   });
 
-  // --- Text chat relay ---
   socket.on('chat-message', ({ target, text }) => {
     io.to(target).emit('chat-message', { from: socket.id, text });
+  });
+
+  socket.on('report-user', ({ target }) => {
+    console.log(`[REPORT] ${socket.id} reported ${target} at ${new Date().toISOString()}`);
+    io.to(socket.id).emit('report-received');
+    disconnectPartner(socket.id, 'reported');
   });
 
   socket.on('disconnect', () => {
