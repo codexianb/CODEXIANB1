@@ -271,7 +271,7 @@
   <div class="brand">🌐 Codexianb</div>
 
   <!-- Persistent status bar: online count + country picker -->
-  <div class="status-bar">
+  <div id="statusBar" class="status-bar">
     <div class="online-pill">
       <span class="online-dot"></span>
       <span id="onlineCount">--</span> online
@@ -371,7 +371,9 @@
 <!-- Socket.io client loaded from CDN (needed since Netlify serves this page as static, not the Express/Render server) -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
-const socket = io('https://codexianb1.onrender.com');
+const socket = io('https://codexianb1.onrender.com', {
+  transports: ['websocket']
+});
 
 // Elements
 const localVideo = document.getElementById('localVideo');
@@ -379,6 +381,7 @@ const remoteVideo = document.getElementById('remoteVideo');
 const idleScreen = document.getElementById('idleScreen');
 const searchingScreen = document.getElementById('searchingScreen');
 const statusText = document.getElementById('statusText');
+const statusBar = document.getElementById('statusBar');
 const topBar = document.getElementById('topBar');
 const controlBar = document.getElementById('controlBar');
 const callStatus = document.getElementById('callStatus');
@@ -410,8 +413,6 @@ const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 
 /* ---------------- Countries + online counter ---------------- */
-// ISO 3166-1 alpha-2 codes + names. Flag emoji is derived from the code itself
-// (regional indicator symbols), so we don't need to store an emoji per row.
 const COUNTRIES = [
   ["AF","Afghanistan"],["AL","Albania"],["DZ","Algeria"],["AD","Andorra"],["AO","Angola"],
   ["AR","Argentina"],["AM","Armenia"],["AU","Australia"],["AT","Austria"],["AZ","Azerbaijan"],
@@ -547,6 +548,7 @@ function logMsg(text, cls) {
 
 /* ---------------- UI state helpers ---------------- */
 function showIdle() {
+  statusBar.classList.remove('hidden');
   idleScreen.classList.remove('hidden');
   searchingScreen.classList.add('hidden');
   topBar.classList.add('hidden');
@@ -558,6 +560,7 @@ function showIdle() {
 }
 
 function showSearching(message) {
+  statusBar.classList.remove('hidden');
   idleScreen.classList.add('hidden');
   searchingScreen.classList.remove('hidden');
   topBar.classList.add('hidden');
@@ -565,9 +568,13 @@ function showSearching(message) {
   localVideo.classList.remove('hidden');
   localVideo.classList.remove('pip');
   localVideo.classList.add('full');
+
+  controlBar.classList.remove('hidden');
+  stopBtn.disabled = false;
 }
 
 function showInCall() {
+  statusBar.classList.add('hidden');
   idleScreen.classList.add('hidden');
   searchingScreen.classList.add('hidden');
   topBar.classList.remove('hidden');
@@ -788,18 +795,13 @@ switchCamBtn.addEventListener('click', async () => {
 
   try {
     const oldVideoTrack = localStream.getVideoTracks()[0];
-    // Release the current camera BEFORE requesting the other one - most phones
-    // can't keep the front and back camera open at the same time.
     if (oldVideoTrack) oldVideoTrack.stop();
 
-    // Only request video here - re-requesting audio too was fighting with the
-    // mic track already in use and was the main reason switching kept failing.
     const newStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: currentFacingMode } }
     });
     const newVideoTrack = newStream.getVideoTracks()[0];
 
-    // Preserve the current camera-off state on the new track.
     newVideoTrack.enabled = !isCameraOff;
 
     if (peerConnection) {
