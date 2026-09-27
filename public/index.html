@@ -2,113 +2,280 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Codexianb</title>
 <style>
-  * { box-sizing: border-box; }
+  :root{
+    --bg:#000;
+    --panel: rgba(28,28,30,0.72);
+    --panel-solid:#1c1c1e;
+    --accent:#4ade80;
+    --accent-blue:#0084ff;
+    --danger:#ff3b30;
+    --icon-btn:rgba(58,58,60,0.85);
+    --icon-btn-active:#f5a623;
+    --text:#f2f2f2;
+    --text-dim:#9a9a9e;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; }
   body {
-    font-family: -apple-system, system-ui, sans-serif;
-    background: #111;
-    color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
     margin: 0;
-    padding: 20px;
+    overflow: hidden;
   }
-  h1 { text-align: center; font-size: 20px; color: #4ade80; }
-  .videos {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin: 20px 0;
-  }
-  video {
-    width: 360px;
-    max-width: 45vw;
-    background: #000;
-    border-radius: 8px;
-    border: 2px solid #333;
-  }
-  .controls {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    margin-bottom: 16px;
-  }
-  button {
-    padding: 10px 18px;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-  #startBtn { background: #4ade80; }
-  #nextBtn { background: #60a5fa; }
-  #stopBtn { background: #f87171; }
-  #muteBtn, #cameraBtn, #switchCamBtn { background: #444; color: #eee; font-size: 13px; }
-  #muteBtn.active, #cameraBtn.active { background: #f59e0b; color: #111; }
-  #reportBtn { background: #7f1d1d; color: #eee; font-size: 13px; }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  #status { text-align: center; color: #999; margin-bottom: 10px; }
 
-  .chatBox {
-    max-width: 600px;
-    margin: 0 auto;
-    background: #1a1a1a;
-    border-radius: 8px;
-    padding: 12px;
-  }
-  #messages {
-    height: 180px;
-    overflow-y: auto;
-    padding: 8px;
+  #app {
+    position: fixed;
+    inset: 0;
     background: #000;
-    border-radius: 6px;
-    margin-bottom: 8px;
+    overflow: hidden;
+  }
+
+  video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #0a0a0a;
+  }
+  #remoteVideo { z-index: 1; }
+  #localVideo.pip {
+    z-index: 5;
+    width: 108px;
+    height: 152px;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    right: 16px;
+    left: auto;
+    bottom: auto;
+    border-radius: 14px;
+    border: 2px solid rgba(255,255,255,0.25);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    transform: scaleX(-1);
+    cursor: grab;
+    touch-action: none;
+  }
+  #localVideo.pip:active { cursor: grabbing; }
+  #localVideo.full {
+    z-index: 2;
+    transform: scaleX(-1);
+  }
+  .hidden { display: none !important; }
+
+  /* ---------- Idle screen ---------- */
+  .overlay-screen{
+    position:absolute; inset:0; z-index:10;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; text-align:center; padding: 24px;
+    background: radial-gradient(circle at 50% 30%, #1c1c1e 0%, #000 75%);
+  }
+  .brand{
+    position:absolute; top: calc(env(safe-area-inset-top,0px) + 20px);
+    font-size: 15px; font-weight:600; color: var(--text-dim); letter-spacing:0.5px;
+  }
+  .idle-title{ font-size:22px; font-weight:600; }
+  .idle-sub{ font-size:14px; color:var(--text-dim); max-width:280px; }
+
+  .call-btn{
+    width:88px; height:88px; border-radius:50%;
+    border:none; display:flex; align-items:center; justify-content:center;
+    background: var(--accent); color:#0b3d1f;
+    box-shadow: 0 8px 24px rgba(74,222,128,0.35);
+    cursor:pointer;
+  }
+  .call-btn svg{ width:36px; height:36px; }
+  .call-btn:active{ transform: scale(0.94); }
+
+  .spinner{
+    width:44px; height:44px; border-radius:50%;
+    border: 4px solid rgba(255,255,255,0.15);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .pill-btn{
+    padding: 10px 22px; border-radius: 999px; border:none;
+    background: var(--icon-btn); color: var(--text); font-size:14px; font-weight:500;
+    cursor:pointer;
+  }
+
+  /* ---------- Top bar (in call) ---------- */
+  .top-bar{
+    position:absolute; top:0; left:0; right:0; z-index:8;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: calc(env(safe-area-inset-top,0px) + 14px) 16px 40px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+  }
+  #callStatus{ font-size:14px; font-weight:600; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
+  #callTimer{ font-size:12px; color:var(--text-dim); margin-top:2px; }
+
+  /* ---------- Bottom control bar ---------- */
+  .control-bar{
+    position:absolute; left:0; right:0; bottom:0; z-index:8;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    padding: 16px 12px calc(env(safe-area-inset-bottom,0px) + 20px);
+    background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+  }
+  .icon-btn{
+    width:52px; height:52px; border-radius:50%; border:none;
+    background: var(--icon-btn); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0;
+  }
+  .icon-btn svg{ width:24px; height:24px; }
+  .icon-btn:active{ transform: scale(0.92); }
+  .icon-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .icon-btn.active{ background: var(--icon-btn-active); color:#1a1a1a; }
+  .icon-btn--end{
+    background: var(--danger); width:60px; height:60px;
+  }
+  .icon-btn--end svg{ width:26px; height:26px; }
+  .icon-btn--next{ background: var(--accent-blue); }
+  .icon-btn .icon-off{ display:none; }
+  .icon-btn.active .icon-on{ display:none; }
+  .icon-btn.active .icon-off{ display:block; }
+
+  /* ---------- Chat panel ---------- */
+  .chat-panel{
+    position:absolute; left:0; right:0; bottom:0; z-index:20;
+    max-height:55%; display:flex; flex-direction:column;
+    background: var(--panel-solid);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+    transform: translateY(0);
+    transition: transform 0.22s ease;
+    padding-bottom: env(safe-area-inset-bottom,0px);
+  }
+  .chat-panel.hidden{ transform: translateY(110%); display:flex; }
+  .chat-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 12px 16px; font-weight:600; font-size:15px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .chat-header button{
+    background:none; border:none; color:var(--text-dim); width:30px; height:30px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .chat-header button svg{ width:18px; height:18px; }
+  #messages {
+    flex: 1; min-height: 140px;
+    overflow-y: auto;
+    padding: 10px 16px;
     font-size: 14px;
   }
-  #messages div { margin-bottom: 4px; }
-  .me { color: #4ade80; }
-  .them { color: #60a5fa; }
-  .sys { color: #999; font-style: italic; }
-  .chatInput { display: flex; gap: 8px; }
+  #messages div { margin-bottom: 8px; line-height:1.4; }
+  .me { color: var(--accent); }
+  .them { color: #7ab8ff; }
+  .sys { color: var(--text-dim); font-style: italic; }
+  .chatInput { display: flex; gap: 8px; padding: 10px 16px; }
   .chatInput input {
     flex: 1;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #333;
-    background: #111;
-    color: #eee;
+    padding: 10px 14px;
+    border-radius: 20px;
+    border: none;
+    background: #2c2c2e;
+    color: var(--text);
+    font-size:14px;
+  }
+  .chatInput input:focus{ outline: 2px solid var(--accent-blue); }
+  .chatInput button{
+    width:40px; height:40px; border-radius:50%; border:none;
+    background: var(--accent-blue); color:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .chatInput button svg{ width:18px; height:18px; }
+  .chatInput button:disabled{ opacity:0.4; }
+
+  .searching-banner{
+    position:absolute; top: 50%; left:50%; transform: translate(-50%,-50%);
+    z-index:7; display:flex; flex-direction:column; align-items:center; gap:14px;
+    padding: 22px 26px; border-radius:18px; background: rgba(0,0,0,0.55);
   }
 </style>
 </head>
 <body>
 
-<h1>🌐 Codexianb</h1>
-<p id="status">Not connected</p>
-
-<div class="videos">
-  <video id="localVideo" autoplay muted playsinline></video>
+<div id="app">
   <video id="remoteVideo" autoplay playsinline></video>
-</div>
+  <video id="localVideo" autoplay muted playsinline></video>
 
-<div class="controls">
-  <button id="startBtn">Start</button>
-  <button id="nextBtn" disabled>Next Stranger</button>
-  <button id="stopBtn" disabled>Stop</button>
-</div>
+  <div class="brand">🌐 Codexianb</div>
 
-<div class="controls">
-  <button id="muteBtn" disabled>🎤 Mute</button>
-  <button id="cameraBtn" disabled>📹 Camera Off</button>
-  <button id="switchCamBtn" disabled>🔄 Switch Camera</button>
-  <button id="reportBtn" disabled>🚩 Report</button>
-</div>
+  <!-- IDLE -->
+  <div id="idleScreen" class="overlay-screen">
+    <div class="idle-title">Start a random video call</div>
+    <div class="idle-sub">You'll be matched instantly with a stranger.</div>
+    <button id="startBtn" class="call-btn" aria-label="Start video call">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+    </button>
+  </div>
 
-<div class="chatBox">
-  <div id="messages"></div>
-  <div class="chatInput">
-    <input id="chatInput" placeholder="Type a message..." disabled />
-    <button id="sendBtn" disabled>Send</button>
+  <!-- SEARCHING -->
+  <div id="searchingScreen" class="searching-banner hidden">
+    <div class="spinner"></div>
+    <div id="statusText">Looking for a stranger...</div>
+    <button id="cancelSearchBtn" class="pill-btn">Cancel</button>
+  </div>
+
+  <!-- TOP BAR (in call) -->
+  <div id="topBar" class="top-bar hidden">
+    <div>
+      <div id="callStatus">Connected</div>
+      <div id="callTimer">00:00</div>
+    </div>
+    <button id="reportBtn" class="icon-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Report" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+    </button>
+  </div>
+
+  <!-- BOTTOM CONTROL BAR (in call) -->
+  <div id="controlBar" class="control-bar hidden">
+    <button id="chatToggleBtn" class="icon-btn" aria-label="Chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>
+    </button>
+
+    <button id="switchCamBtn" class="icon-btn" aria-label="Switch camera" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12v-2a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2a4 4 0 0 1-4 4H3"/></svg>
+    </button>
+
+    <button id="muteBtn" class="icon-btn" aria-label="Mute microphone" disabled>
+      <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+      <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+    </button>
+
+    <button id="stopBtn" class="icon-btn icon-btn--end" aria-label="End call" disabled>
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-2.5 0-4.9.6-7 1.7a1 1 0 0 0-.5 1.1l.7 2.7a1 1 0 0 0 1.2.7c1-.3 2-.5 3.1-.6l.4-1.7a1 1 0 0 1 1-.8h2.2a1 1 0 0 1 1 .8l.4 1.7c1.1.1 2.1.3 3.1.6a1 1 0 0 0 1.2-.7l.7-2.7a1 1 0 0 0-.5-1.1C16.9 9.6 14.5 9 12 9z"/></svg>
+    </button>
+
+    <button id="cameraBtn" class="icon-btn" aria-label="Turn camera off" disabled>
+      <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+      <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+    </button>
+
+    <button id="nextBtn" class="icon-btn icon-btn--next" aria-label="Next stranger" disabled>
+      <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 15,12 5,20"/><rect x="17" y="4" width="2.4" height="16"/></svg>
+    </button>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div id="chatPanel" class="chat-panel hidden">
+    <div class="chat-header">
+      <span>Chat</span>
+      <button id="closeChatBtn" aria-label="Close chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+      </button>
+    </div>
+    <div id="messages"></div>
+    <div class="chatInput">
+      <input id="chatInput" placeholder="Type a message..." disabled />
+      <button id="sendBtn" disabled aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12l18-9-9 18-2-7z"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -117,16 +284,29 @@
 <script>
 const socket = io('https://codexianb1.onrender.com');
 
+// Elements
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
+const idleScreen = document.getElementById('idleScreen');
+const searchingScreen = document.getElementById('searchingScreen');
+const statusText = document.getElementById('statusText');
+const topBar = document.getElementById('topBar');
+const controlBar = document.getElementById('controlBar');
+const callStatus = document.getElementById('callStatus');
+const callTimerEl = document.getElementById('callTimer');
+
 const startBtn = document.getElementById('startBtn');
+const cancelSearchBtn = document.getElementById('cancelSearchBtn');
 const nextBtn = document.getElementById('nextBtn');
 const stopBtn = document.getElementById('stopBtn');
 const muteBtn = document.getElementById('muteBtn');
 const cameraBtn = document.getElementById('cameraBtn');
 const switchCamBtn = document.getElementById('switchCamBtn');
 const reportBtn = document.getElementById('reportBtn');
-const statusEl = document.getElementById('status');
+
+const chatToggleBtn = document.getElementById('chatToggleBtn');
+const closeChatBtn = document.getElementById('closeChatBtn');
+const chatPanel = document.getElementById('chatPanel');
 const messagesEl = document.getElementById('messages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -137,30 +317,16 @@ let currentPeerId = null;
 let isMuted = false;
 let isCameraOff = false;
 let currentFacingMode = 'user';
+let callTimerInterval = null;
+let callSeconds = 0;
 
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.relay.metered.ca:80' },
-    {
-      urls: 'turn:global.relay.metered.ca:80',
-      username: 'ba5bc2c88d309320638057a5',
-      credential: '5rdu5POjfqZN8x9q'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-      username: 'ba5bc2c88d309320638057a5',
-      credential: '5rdu5POjfqZN8x9q'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:443',
-      username: 'ba5bc2c88d309320638057a5',
-      credential: '5rdu5POjfqZN8x9q'
-    },
-    {
-      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-      username: 'ba5bc2c88d309320638057a5',
-      credential: '5rdu5POjfqZN8x9q'
-    }
+    { urls: 'turn:global.relay.metered.ca:80', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
+    { urls: 'turn:global.relay.metered.ca:443', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' }
   ]
 };
 
@@ -172,9 +338,66 @@ function logMsg(text, cls) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+/* ---------------- UI state helpers ---------------- */
+function showIdle() {
+  idleScreen.classList.remove('hidden');
+  searchingScreen.classList.add('hidden');
+  topBar.classList.add('hidden');
+  controlBar.classList.add('hidden');
+  chatPanel.classList.add('hidden');
+  localVideo.classList.remove('pip');
+  localVideo.classList.remove('full');
+  localVideo.classList.add('hidden');
+}
+
+function showSearching(message) {
+  idleScreen.classList.add('hidden');
+  searchingScreen.classList.remove('hidden');
+  topBar.classList.add('hidden');
+  statusText.textContent = message || 'Looking for a stranger...';
+  localVideo.classList.remove('hidden');
+  localVideo.classList.remove('pip');
+  localVideo.classList.add('full');
+}
+
+function showInCall() {
+  idleScreen.classList.add('hidden');
+  searchingScreen.classList.add('hidden');
+  topBar.classList.remove('hidden');
+  controlBar.classList.remove('hidden');
+  localVideo.classList.remove('full');
+  localVideo.classList.add('pip');
+}
+
+function enableLocalMediaControls(enabled) {
+  muteBtn.disabled = !enabled;
+  cameraBtn.disabled = !enabled;
+  switchCamBtn.disabled = !enabled;
+}
+
+function startCallTimer() {
+  callSeconds = 0;
+  callTimerEl.textContent = '00:00';
+  clearInterval(callTimerInterval);
+  callTimerInterval = setInterval(() => {
+    callSeconds++;
+    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const s = String(callSeconds % 60).padStart(2, '0');
+    callTimerEl.textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function stopCallTimer() {
+  clearInterval(callTimerInterval);
+  callTimerInterval = null;
+}
+
+/* ---------------- Media / WebRTC ---------------- */
 async function initMedia() {
-  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  if (localStream) return localStream;
+  localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: true });
   localVideo.srcObject = localStream;
+  return localStream;
 }
 
 function createPeerConnection(peerId) {
@@ -194,7 +417,7 @@ function createPeerConnection(peerId) {
 
   pc.onconnectionstatechange = () => {
     if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-      statusEl.textContent = 'Connection lost. Click "Next Stranger" to reconnect.';
+      callStatus.textContent = 'Connection lost...';
     }
   };
 
@@ -210,16 +433,17 @@ async function startAsInitiator(peerId) {
 
 socket.on('matched', async ({ peerId, initiator }) => {
   currentPeerId = peerId;
-  statusEl.textContent = 'Connected to a stranger!';
+  callStatus.textContent = 'Connected';
+  showInCall();
+  startCallTimer();
   logMsg('You are now chatting with a stranger.', 'sys');
+
   nextBtn.disabled = false;
   stopBtn.disabled = false;
   chatInput.disabled = false;
   sendBtn.disabled = false;
-  muteBtn.disabled = false;
-  cameraBtn.disabled = false;
-  switchCamBtn.disabled = false;
   reportBtn.disabled = false;
+  enableLocalMediaControls(true);
 
   if (initiator) {
     await startAsInitiator(peerId);
@@ -254,21 +478,18 @@ socket.on('chat-message', ({ text }) => {
 
 socket.on('partner-left', () => {
   logMsg('Stranger has disconnected.', 'sys');
-  statusEl.textContent = 'Stranger left. Click "Next Stranger" to find someone new.';
   cleanupConnection();
-  disableCallControls();
+  if (localStream) {
+    showSearching('Stranger left. Looking for someone new...');
+    socket.emit('find-peer');
+  } else {
+    showIdle();
+  }
 });
 
 socket.on('report-received', () => {
   logMsg('Your report was submitted. Connecting you to someone new...', 'sys');
 });
-
-function disableCallControls() {
-  muteBtn.disabled = true;
-  cameraBtn.disabled = true;
-  switchCamBtn.disabled = true;
-  reportBtn.disabled = true;
-}
 
 function cleanupConnection() {
   if (peerConnection) {
@@ -277,21 +498,45 @@ function cleanupConnection() {
   }
   remoteVideo.srcObject = null;
   currentPeerId = null;
+  stopCallTimer();
+  nextBtn.disabled = true;
+  stopBtn.disabled = true;
+  reportBtn.disabled = true;
+  chatInput.disabled = true;
+  sendBtn.disabled = true;
+  chatPanel.classList.add('hidden');
 }
 
+/* ---------------- Button handlers ---------------- */
 startBtn.addEventListener('click', async () => {
-  await initMedia();
-  statusEl.textContent = 'Looking for a stranger...';
+  try {
+    await initMedia();
+  } catch (err) {
+    console.error('getUserMedia failed', err);
+    alert('Camera/microphone access is required to start a video call. Please allow permission and try again.');
+    return;
+  }
+  showSearching('Looking for a stranger...');
+  enableLocalMediaControls(true);
   socket.emit('find-peer');
-  startBtn.disabled = true;
-  nextBtn.disabled = false;
-  stopBtn.disabled = false;
+});
+
+cancelSearchBtn.addEventListener('click', () => {
+  socket.emit('leave');
+  cleanupConnection();
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+  localVideo.srcObject = null;
+  enableLocalMediaControls(false);
+  showIdle();
 });
 
 nextBtn.addEventListener('click', () => {
   cleanupConnection();
   messagesEl.innerHTML = '';
-  statusEl.textContent = 'Looking for a new stranger...';
+  showSearching('Looking for a new stranger...');
   socket.emit('find-peer');
 });
 
@@ -303,58 +548,67 @@ stopBtn.addEventListener('click', () => {
     localStream = null;
   }
   localVideo.srcObject = null;
-  statusEl.textContent = 'Stopped.';
-  startBtn.disabled = false;
-  nextBtn.disabled = true;
-  stopBtn.disabled = true;
-  chatInput.disabled = true;
-  sendBtn.disabled = true;
-  disableCallControls();
+  enableLocalMediaControls(false);
   isMuted = false;
   isCameraOff = false;
-  muteBtn.textContent = '🎤 Mute';
   muteBtn.classList.remove('active');
-  cameraBtn.textContent = '📹 Camera Off';
   cameraBtn.classList.remove('active');
   messagesEl.innerHTML = '';
+  showIdle();
 });
 
 muteBtn.addEventListener('click', () => {
   if (!localStream) return;
   isMuted = !isMuted;
   localStream.getAudioTracks().forEach((track) => (track.enabled = !isMuted));
-  muteBtn.textContent = isMuted ? '🔇 Unmute' : '🎤 Mute';
   muteBtn.classList.toggle('active', isMuted);
+  muteBtn.setAttribute('aria-label', isMuted ? 'Unmute microphone' : 'Mute microphone');
 });
 
 cameraBtn.addEventListener('click', () => {
   if (!localStream) return;
   isCameraOff = !isCameraOff;
   localStream.getVideoTracks().forEach((track) => (track.enabled = !isCameraOff));
-  cameraBtn.textContent = isCameraOff ? '📹 Camera On' : '📹 Camera Off';
   cameraBtn.classList.toggle('active', isCameraOff);
+  cameraBtn.setAttribute('aria-label', isCameraOff ? 'Turn camera on' : 'Turn camera off');
 });
 
 switchCamBtn.addEventListener('click', async () => {
-  if (!localStream || !peerConnection) return;
+  if (!localStream) return;
+  const previousFacingMode = currentFacingMode;
   currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  switchCamBtn.disabled = true;
+
   try {
+    const oldVideoTrack = localStream.getVideoTracks()[0];
+    // Release the current camera BEFORE requesting the other one - most phones
+    // can't keep the front and back camera open at the same time.
+    if (oldVideoTrack) oldVideoTrack.stop();
+
+    // Only request video here - re-requesting audio too was fighting with the
+    // mic track already in use and was the main reason switching kept failing.
     const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: currentFacingMode },
-      audio: true
+      video: { facingMode: { ideal: currentFacingMode } }
     });
     const newVideoTrack = newStream.getVideoTracks()[0];
-    const sender = peerConnection.getSenders().find((s) => s.track && s.track.kind === 'video');
-    if (sender) await sender.replaceTrack(newVideoTrack);
 
-    const oldVideoTrack = localStream.getVideoTracks()[0];
-    if (oldVideoTrack) oldVideoTrack.stop();
-    localStream.removeTrack(oldVideoTrack);
+    // Preserve the current camera-off state on the new track.
+    newVideoTrack.enabled = !isCameraOff;
+
+    if (peerConnection) {
+      const sender = peerConnection.getSenders().find((s) => s.track && s.track.kind === 'video');
+      if (sender) await sender.replaceTrack(newVideoTrack);
+    }
+
+    if (oldVideoTrack) localStream.removeTrack(oldVideoTrack);
     localStream.addTrack(newVideoTrack);
     localVideo.srcObject = localStream;
   } catch (err) {
     console.error('Error switching camera', err);
     logMsg('Could not switch camera on this device.', 'sys');
+    currentFacingMode = previousFacingMode;
+  } finally {
+    switchCamBtn.disabled = false;
   }
 });
 
@@ -365,8 +619,15 @@ reportBtn.addEventListener('click', () => {
   socket.emit('report-user', { target: currentPeerId });
   logMsg('Report submitted. Finding a new stranger...', 'sys');
   cleanupConnection();
-  disableCallControls();
+  showSearching('Finding a new stranger...');
   socket.emit('find-peer');
+});
+
+chatToggleBtn.addEventListener('click', () => {
+  chatPanel.classList.toggle('hidden');
+});
+closeChatBtn.addEventListener('click', () => {
+  chatPanel.classList.add('hidden');
 });
 
 sendBtn.addEventListener('click', sendChat);
@@ -381,6 +642,38 @@ function sendChat() {
   logMsg('You: ' + text, 'me');
   chatInput.value = '';
 }
+
+/* ---------------- Draggable local PIP ---------------- */
+(function makePipDraggable() {
+  let dragging = false;
+  let offsetX = 0, offsetY = 0;
+
+  localVideo.addEventListener('pointerdown', (e) => {
+    if (!localVideo.classList.contains('pip')) return;
+    dragging = true;
+    const rect = localVideo.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    localVideo.setPointerCapture(e.pointerId);
+  });
+
+  localVideo.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = localVideo.getBoundingClientRect();
+    let left = e.clientX - offsetX;
+    let top = e.clientY - offsetY;
+    left = Math.max(6, Math.min(window.innerWidth - rect.width - 6, left));
+    top = Math.max(6, Math.min(window.innerHeight - rect.height - 6, top));
+    localVideo.style.left = left + 'px';
+    localVideo.style.top = top + 'px';
+    localVideo.style.right = 'auto';
+  });
+
+  localVideo.addEventListener('pointerup', (e) => {
+    dragging = false;
+    try { localVideo.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+})();
 </script>
 </body>
 </html>
