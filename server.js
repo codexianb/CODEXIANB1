@@ -1,7 +1,4 @@
 // server.js
-// Signaling + random-pairing server for a stranger video chat app.
-// Run: npm install && npm start
-
 const express = require('express');
 const http = require('http');
 const path = require('path');
