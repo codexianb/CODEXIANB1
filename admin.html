@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Codexianb — Admin</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0d0d0e; color:#eee; margin:0; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:#888; font-size:13px; margin-bottom:20px; }
+  input { padding:8px 10px; border-radius:8px; border:1px solid #333; background:#1b1b1d; color:#eee; }
+  button { padding:8px 14px; border-radius:8px; border:none; background:#0084ff; color:#fff; cursor:pointer; margin-left:6px; }
+  button.ghost { background:#333; }
+  table { width:100%; border-collapse:collapse; margin-top:18px; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #262626; word-break:break-all; }
+  th { color:#999; font-weight:600; text-transform:uppercase; font-size:11px; }
+  .section { margin-top:36px; }
+  .empty { color:#666; font-style:italic; padding:16px 0; }
+  #loginBox { display:flex; flex-direction:column; gap:10px; max-width:280px; }
+  #loginBox input { width:100%; }
+  #loginError { color:#ff6b60; font-size:13px; min-height:16px; }
+  #topRow { display:flex; align-items:center; justify-content:space-between; }
+</style>
+</head>
+<body>
+  <div id="topRow">
+    <div>
+      <h1>Codexianb — Admin</h1>
+      <div class="sub">Reports &amp; bans.</div>
+    </div>
+    <button id="logoutBtn" class="ghost" style="display:none">Log out</button>
+  </div>
+
+  <div id="loginBox">
+    <input id="loginEmail" type="email" placeholder="Admin email" autocomplete="username" />
+    <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+    <div id="loginError"></div>
+    <button onclick="login()">Log in</button>
+  </div>
+
+  <div id="panels" style="display:none">
+    <div class="section">
+      <h2>Active bans</h2>
+      <div id="bansWrap"></div>
+    </div>
+    <div class="section">
+      <h2>Recent reports (last 300)</h2>
+      <div id="reportsWrap"></div>
+    </div>
+    <div class="section">
+      <h2>Manual ban</h2>
+      <input id="manualIpHash" placeholder="ip_hash (copy from a report row)" style="width:420px" />
+      <input id="manualReason" placeholder="reason" style="width:220px" />
+      <button onclick="manualBan()">Ban</button>
+    </div>
+  </div>
+
+<script>
+async function login() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+
+  const res = await fetch('/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    errEl.textContent = data.error || 'Login failed';
+    return;
+  }
+
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+  document.getElementById('panels').style.display = 'block';
+  loadAll();
+}
+
+async function logout() {
+  await fetch('/admin/logout', { method: 'POST', credentials: 'same-origin' });
+  location.reload();
+}
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (res.status === 401) {
+    document.getElementById('panels').style.display = 'none';
+    document.getElementById('loginBox').style.display = 'flex';
+    document.getElementById('logoutBtn').style.display = 'none';
+    throw new Error('unauthorized');
+  }
+  return res.json();
+}
+
+function fmtTime(ms) { return ms ? new Date(ms).toLocaleString() : '—'; }
+
+async function loadBans() {
+  const bans = await api('/admin/api/bans');
+  const wrap = document.getElementById('bansWrap');
+  if (!bans.length) { wrap.innerHTML = '<div class="empty">No active bans.</div>'; return; }
+  wrap.innerHTML = `<table>
+    <tr><th>ip_hash</th><th>Reason</th><th>Strikes</th><th>Banned at</th><th>Expires</th><th></th></tr>
+    ${bans.map(b => `
+      <tr>
+        <td>${b.ip_hash}</td>
+        <td>${b.reason || ''}</td>
+        <td>${b.strike_count}</td>
+        <td>${fmtTime(b.banned_at)}</td>
+        <td>${b.expires_at ? fmtTime(b.expires_at) : 'Permanent'}</td>
+        <td><button class="ghost" onclick="unban('${b.ip_hash}')">Unban</button></td>
+      </tr>`).join('')}
+  </table>`;
+}
+
+async function loadReports() {
+  const reports = await api('/admin/api/reports');
+  const wrap = document.getElementById('reportsWrap');
+  if (!reports.length) { wrap.innerHTML = '<div class="empty">No reports yet.</div>'; return; }
+  wrap.innerHTML = `<table>
+    <tr><th>When</th><th>Reported ip_hash</th><th>Reporter ip_hash</th><th>Reason</th></tr>
+    ${reports.map(r => `
+      <tr>
+        <td>${fmtTime(r.created_at)}</td>
+        <td>${r.reported_hash}</td>
+        <td>${r.reporter_hash}</td>
+        <td>${r.reason || ''}</td>
+      </tr>`).join('')}
+  </table>`;
+}
+
+async function unban(ipHash) {
+  await api('/admin/api/unban', { method: 'POST', body: JSON.stringify({ ipHash }) });
+  loadAll();
+}
+
+async function manualBan() {
+  const ipHash = document.getElementById('manualIpHash').value.trim();
+  const reason = document.getElementById('manualReason').value.trim();
+  if (!ipHash) return;
+  await api('/admin/api/ban', { method: 'POST', body: JSON.stringify({ ipHash, reason }) });
+  loadAll();
+}
+
+function loadAll() { loadBans(); loadReports(); }
+
+// Try loading straight away in case a still-valid session cookie exists.
+api('/admin/api/bans').then(() => {
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+  document.getElementById('panels').style.display = 'block';
+  loadAll();
+}).catch(() => { document.getElementById('loginBox').style.display = 'flex'; });
+</script>
+</body>
+</html>
