@@ -178,6 +178,32 @@
   #callStatus{ font-size:14px; font-weight:600; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
   #callTimer{ font-size:12px; color:var(--text-dim); margin-top:2px; }
 
+  /* ---------- Chat toggle unread badge ---------- */
+  #chatToggleBtn{ position:relative; }
+  .chat-badge{
+    position:absolute; top:-2px; right:-2px; width:10px; height:10px;
+    border-radius:50%; background:#ff4757; border:2px solid var(--bg, #111);
+    display:none;
+  }
+  .chat-badge.show{ display:block; }
+
+  /* ---------- Tip prompt (system message w/ button) ---------- */
+  .tip-msg{
+    background: rgba(255,255,255,0.06); border-radius:12px; padding:10px 12px;
+    margin:8px 0; font-size:13px; line-height:1.4;
+  }
+  .tip-msg .tip-btn{
+    display:inline-block; margin-top:8px; padding:8px 16px; border:none;
+    border-radius:999px; background:#0072ce; color:#fff; font-size:13px;
+    font-weight:600; cursor:pointer;
+  }
+  .tip-msg .tip-btn:active{ opacity:0.85; }
+  .tip-msg .tip-account{
+    margin-top:8px; padding:8px 10px; border-radius:8px;
+    background:rgba(255,255,255,0.08); font-size:13px;
+  }
+  .tip-msg .tip-account b{ color:#fff; }
+
   /* ---------- Bottom control bar ---------- */
   .control-bar{
     position:absolute; left:0; right:0; bottom:0; z-index:8;
@@ -339,14 +365,20 @@
       <div id="callStatus">Connected</div>
       <div id="callTimer">00:00</div>
     </div>
-    <button id="reportBtn" class="icon-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Report" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
-    </button>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="tipMenuBtn" class="icon-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Tip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+      </button>
+      <button id="reportBtn" class="icon-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Report" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+      </button>
+    </div>
   </div>
 
   <!-- BOTTOM CONTROL BAR (in call) -->
   <div id="controlBar" class="control-bar hidden">
     <button id="chatToggleBtn" class="icon-btn" aria-label="Chat">
+      <span id="chatBadge" class="chat-badge"></span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>
     </button>
 
@@ -437,6 +469,7 @@ const muteBtn = document.getElementById('muteBtn');
 const cameraBtn = document.getElementById('cameraBtn');
 const switchCamBtn = document.getElementById('switchCamBtn');
 const reportBtn = document.getElementById('reportBtn');
+const tipMenuBtn = document.getElementById('tipMenuBtn');
 
 const onlineCountEl = document.getElementById('onlineCount');
 const countryBtn = document.getElementById('countryBtn');
@@ -448,6 +481,7 @@ const countrySearch = document.getElementById('countrySearch');
 const countryList = document.getElementById('countryList');
 
 const chatToggleBtn = document.getElementById('chatToggleBtn');
+const chatBadge = document.getElementById('chatBadge');
 const closeChatBtn = document.getElementById('closeChatBtn');
 const chatPanel = document.getElementById('chatPanel');
 const messagesEl = document.getElementById('messages');
@@ -455,8 +489,6 @@ const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 
 /* ---------------- Countries + online counter ---------------- */
-// ISO 3166-1 alpha-2 codes + names. Flag emoji is derived from the code itself
-// (regional indicator symbols), so we don't need to store an emoji per row.
 const COUNTRIES = [
   ["AF","Afghanistan"],["AL","Albania"],["DZ","Algeria"],["AD","Andorra"],["AO","Angola"],
   ["AR","Argentina"],["AM","Armenia"],["AU","Australia"],["AT","Austria"],["AZ","Azerbaijan"],
@@ -560,9 +592,6 @@ countrySearch.addEventListener('input', () => renderCountryList(countrySearch.va
 setCountryButtonLabel();
 
 /* ---------------- Age gate ---------------- */
-// Client-side gate only — a real deployment also needs a legal/ToS review
-// and, if required in your jurisdiction, a proper age-verification vendor.
-// This stops casual/accidental access, not a determined minor.
 if (!localStorage.getItem('ageConfirmed18')) {
   ageGate.classList.remove('hidden');
 }
@@ -601,6 +630,12 @@ let isCameraOff = false;
 let currentFacingMode = 'user';
 let callTimerInterval = null;
 let callSeconds = 0;
+let tipShown = false;
+
+/* ---------- Tip jar config ---------- */
+const TIP_GCASH_NAME = 'LA**E CY**L M.';
+const TIP_GCASH_NUMBER = '09509558089';
+const TIP_TRIGGER_SECONDS = 300; // 5 minutes into the call
 
 const rtcConfig = {
   iceServers: [
@@ -665,6 +700,7 @@ function enableLocalMediaControls(enabled) {
 
 function startCallTimer() {
   callSeconds = 0;
+  tipShown = false;
   callTimerEl.textContent = '00:00';
   clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
@@ -672,12 +708,54 @@ function startCallTimer() {
     const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
     const s = String(callSeconds % 60).padStart(2, '0');
     callTimerEl.textContent = `${m}:${s}`;
+
+    if (!tipShown && callSeconds >= TIP_TRIGGER_SECONDS) {
+      tipShown = true;
+      showTipPrompt();
+    }
   }, 1000);
 }
 
 function stopCallTimer() {
   clearInterval(callTimerInterval);
   callTimerInterval = null;
+}
+
+function showTipPrompt() {
+  const wrap = document.createElement('div');
+  wrap.className = 'tip-msg';
+
+  const label = document.createElement('div');
+  label.textContent = "Kamusta ang video call? 🙂 Kung OK yung tawag, pwede kang magbigay ng tip via GCash. Thank you so much! 💙";
+  wrap.appendChild(label);
+
+  const account = document.createElement('div');
+  account.className = 'tip-account';
+  account.innerHTML = `<b>${TIP_GCASH_NAME}</b><br>${TIP_GCASH_NUMBER}`;
+  wrap.appendChild(account);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tip-btn';
+  btn.textContent = '📋 Copy number';
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(TIP_GCASH_NUMBER);
+      btn.textContent = '✅ Copied!';
+    } catch (err) {
+      btn.textContent = TIP_GCASH_NUMBER;
+    }
+    setTimeout(() => { btn.textContent = '📋 Copy number'; }, 2000);
+    logMsg('Thank you so much! 💙 Salamat sa tip!', 'sys');
+  });
+  wrap.appendChild(btn);
+
+  messagesEl.appendChild(wrap);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  if (chatPanel.classList.contains('hidden')) {
+    chatBadge.classList.add('show');
+  }
 }
 
 /* ---------------- Media / WebRTC ---------------- */
@@ -793,6 +871,7 @@ function cleanupConnection() {
   chatInput.disabled = true;
   sendBtn.disabled = true;
   chatPanel.classList.add('hidden');
+  chatBadge.classList.remove('show');
 }
 
 /* ---------------- Button handlers ---------------- */
@@ -869,18 +948,13 @@ switchCamBtn.addEventListener('click', async () => {
 
   try {
     const oldVideoTrack = localStream.getVideoTracks()[0];
-    // Release the current camera BEFORE requesting the other one - most phones
-    // can't keep the front and back camera open at the same time.
     if (oldVideoTrack) oldVideoTrack.stop();
 
-    // Only request video here - re-requesting audio too was fighting with the
-    // mic track already in use and was the main reason switching kept failing.
     const newStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: currentFacingMode } }
     });
     const newVideoTrack = newStream.getVideoTracks()[0];
 
-    // Preserve the current camera-off state on the new track.
     newVideoTrack.enabled = !isCameraOff;
 
     if (peerConnection) {
@@ -913,6 +987,16 @@ reportBtn.addEventListener('click', () => {
 
 chatToggleBtn.addEventListener('click', () => {
   chatPanel.classList.toggle('hidden');
+  if (!chatPanel.classList.contains('hidden')) {
+    chatBadge.classList.remove('show');
+  }
+});
+
+tipMenuBtn.addEventListener('click', () => {
+  tipShown = true;
+  showTipPrompt();
+  chatPanel.classList.remove('hidden');
+  chatBadge.classList.remove('show');
 });
 closeChatBtn.addEventListener('click', () => {
   chatPanel.classList.add('hidden');
