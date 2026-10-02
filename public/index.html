@@ -4,12 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Codexianb – Free Random Video Chat with Strangers</title>
-<link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />  <meta name="description" content="Codexianb is a free random video chat website. Meet and talk to strangers from any country instantly. 18+ only." />
+<meta name="description" content="Codexianb is a free random video chat website. Meet and talk to strangers from any country instantly. 18+ only." />
 <link rel="canonical" href="https://codexianb.site/" />
 <meta property="og:title" content="Codexianb – Video Chat with Strangers" />
 <meta property="og:description" content="Free random video chat. Get matched instantly with a stranger." />
 <meta property="og:url" content="https://codexianb.site/" />
 <meta property="og:type" content="website" />
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
 <style>
   :root{
     --bg:#000;
@@ -149,6 +150,51 @@
   }
   .idle-title{ font-size:22px; font-weight:600; }
   .idle-sub{ font-size:14px; color:var(--text-dim); max-width:280px; }
+
+  /* ---------- Idle: Messages vs Video Call choice ---------- */
+  .mode-choice{
+    display:flex; flex-direction:column; gap:14px; align-items:center; width:100%;
+    max-width:280px;
+  }
+  .mode-btn{
+    width:100%; display:flex; align-items:center; justify-content:center; gap:10px;
+    padding:16px 20px; border-radius:18px; border:none; cursor:pointer;
+    font-size:16px; font-weight:600;
+  }
+  .mode-btn svg{ width:22px; height:22px; }
+  .mode-btn--video{ background: var(--accent); color:#0b3d1f; box-shadow: 0 8px 24px rgba(74,222,128,0.35); }
+  .mode-btn--text{ background: var(--accent-blue); color:#fff; box-shadow: 0 8px 24px rgba(0,132,255,0.3); }
+  .mode-btn:active{ transform: scale(0.96); }
+  .mode-or{ font-size:12px; color:var(--text-dim); letter-spacing:1px; }
+
+  /* ---------- Split layout toggle + split view ---------- */
+  .layout-toggle-btn svg{ width:20px; height:20px; }
+  #app.split-layout #remoteVideo{
+    height:50%; top:0; bottom:auto;
+  }
+  #app.split-layout #localVideo.pip{
+    position:absolute; width:100%; height:50%; top:auto; bottom:0; left:0; right:0;
+    border-radius:0; border:none; box-shadow:none; transform:scaleX(-1) !important;
+    cursor:default; touch-action:auto;
+  }
+  #app.split-layout::after{
+    content:''; position:absolute; left:0; right:0; top:50%; height:2px; z-index:6;
+    background: rgba(255,255,255,0.15); transform: translateY(-1px); pointer-events:none;
+  }
+
+  /* ---------- Text-chat-only (Messages) mode ---------- */
+  #app.text-mode-active video{ display:none; }
+  #app.text-mode-active #chatPanel{
+    position:absolute; inset:0; max-height:none; border-radius:0;
+    padding-top: env(safe-area-inset-top,0px); z-index:9;
+  }
+  #app.text-mode-active #chatPanel.hidden{ transform:none; display:flex; }
+  #app.text-mode-active .chat-header{ padding-top: calc(env(safe-area-inset-top,0px) + 12px); }
+  #app.text-mode-active #chatToggleBtn,
+  #app.text-mode-active #switchCamBtn,
+  #app.text-mode-active #muteBtn,
+  #app.text-mode-active #cameraBtn,
+  #app.text-mode-active #layoutToggleBtn{ display:none; }
 
   .call-btn{
     width:88px; height:88px; border-radius:50%;
@@ -351,11 +397,19 @@
 
   <!-- IDLE -->
   <div id="idleScreen" class="overlay-screen">
-    <div class="idle-title">Start a random video call</div>
+    <div class="idle-title">Meet someone new</div>
     <div class="idle-sub">You'll be matched instantly with a stranger.</div>
-    <button id="startBtn" class="call-btn" aria-label="Start video call">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
-    </button>
+    <div class="mode-choice">
+      <button id="messagesBtn" class="mode-btn mode-btn--text" aria-label="Start text chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>
+        MESSAGES
+      </button>
+      <div class="mode-or">— OR —</div>
+      <button id="startBtn" class="mode-btn mode-btn--video" aria-label="Start video call">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+        VIDEO CALL
+      </button>
+    </div>
   </div>
 
   <!-- SEARCHING -->
@@ -372,6 +426,9 @@
       <div id="callTimer">00:00</div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
+      <button id="layoutToggleBtn" class="icon-btn layout-toggle-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Switch layout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="8" rx="1.5"/><rect x="3" y="13" width="18" height="8" rx="1.5"/></svg>
+      </button>
       <button id="tipMenuBtn" class="icon-btn" style="width:40px;height:40px;background:rgba(0,0,0,0.35);" aria-label="Tip">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
       </button>
@@ -476,6 +533,9 @@ const cameraBtn = document.getElementById('cameraBtn');
 const switchCamBtn = document.getElementById('switchCamBtn');
 const reportBtn = document.getElementById('reportBtn');
 const tipMenuBtn = document.getElementById('tipMenuBtn');
+const messagesBtn = document.getElementById('messagesBtn');
+const layoutToggleBtn = document.getElementById('layoutToggleBtn');
+const appEl = document.getElementById('app');
 
 const onlineCountEl = document.getElementById('onlineCount');
 const countryBtn = document.getElementById('countryBtn');
@@ -583,7 +643,7 @@ function selectCountry(code) {
 }
 
 function emitFindPeer() {
-  socket.emit('find-peer', { country: selectedCountry });
+  socket.emit('find-peer', { country: selectedCountry, mode: callMode });
 }
 
 countryBtn.addEventListener('click', () => {
@@ -643,15 +703,23 @@ const TIP_GCASH_NAME = 'LA**E CY**L M.';
 const TIP_GCASH_NUMBER = '09509558089';
 const TIP_TRIGGER_SECONDS = 300; // 5 minutes into the call
 
-const rtcConfig = {
-  iceServers: [
-    { urls: 'stun:stun.relay.metered.ca:80' },
-    { urls: 'turn:global.relay.metered.ca:80', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
-    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
-    { urls: 'turn:global.relay.metered.ca:443', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' },
-    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'ba5bc2c88d309320638057a5', credential: '5rdu5POjfqZN8x9q' }
-  ]
-};
+// TURN credentials are no longer hardcoded here — fetched at runtime from
+// our own backend (see /api/turn-credentials in server.js) so they aren't
+// sitting in plain view in this file's source.
+let rtcConfig = null;
+let rtcConfigPromise = null;
+async function getRtcConfig() {
+  if (rtcConfig) return rtcConfig;
+  if (!rtcConfigPromise) {
+    rtcConfigPromise = fetch('https://codexianb1.onrender.com/api/turn-credentials')
+      .then((r) => r.json())
+      .then((data) => { rtcConfig = data; return data; })
+      .catch(() => ({ iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }] }));
+  }
+  return rtcConfigPromise;
+}
+
+let callMode = 'video'; // 'video' | 'text'
 
 function logMsg(text, cls) {
   const div = document.createElement('div');
@@ -672,6 +740,8 @@ function showIdle() {
   localVideo.classList.remove('pip');
   localVideo.classList.remove('full');
   localVideo.classList.add('hidden');
+  appEl.classList.remove('text-mode-active');
+  appEl.classList.remove('split-layout');
 }
 
 function showSearching(message) {
@@ -727,6 +797,10 @@ function stopCallTimer() {
   callTimerInterval = null;
 }
 
+// Drops a system message with the GCash name + number into the chat log,
+// plus a "Copy number" button, and badges the chat icon if the panel is
+// closed. Nothing here navigates the page or opens a new tab/window, so the
+// WebRTC call (which lives in this page's JS) is never touched.
 function showTipPrompt() {
   const wrap = document.createElement('div');
   wrap.className = 'tip-msg';
@@ -772,8 +846,8 @@ async function initMedia() {
   return localStream;
 }
 
-function createPeerConnection(peerId) {
-  const pc = new RTCPeerConnection(rtcConfig);
+function createPeerConnection(peerId, config) {
+  const pc = new RTCPeerConnection(config || { iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }] });
 
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
@@ -797,15 +871,18 @@ function createPeerConnection(peerId) {
 }
 
 async function startAsInitiator(peerId) {
-  peerConnection = createPeerConnection(peerId);
+  const config = await getRtcConfig();
+  peerConnection = createPeerConnection(peerId, config);
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
   socket.emit('offer', { target: peerId, offer });
 }
 
-socket.on('matched', async ({ peerId, initiator }) => {
+socket.on('matched', async ({ peerId, initiator, mode }) => {
   currentPeerId = peerId;
   callStatus.textContent = 'Connected';
+  callMode = mode === 'text' ? 'text' : 'video';
+  appEl.classList.toggle('text-mode-active', callMode === 'text');
   showInCall();
   startCallTimer();
   logMsg('You are now chatting with a stranger.', 'sys');
@@ -815,17 +892,26 @@ socket.on('matched', async ({ peerId, initiator }) => {
   chatInput.disabled = false;
   sendBtn.disabled = false;
   reportBtn.disabled = false;
-  enableLocalMediaControls(true);
 
-  if (initiator) {
-    await startAsInitiator(peerId);
+  if (callMode === 'video') {
+    enableLocalMediaControls(true);
+    if (initiator) {
+      await startAsInitiator(peerId);
+    } else {
+      const config = await getRtcConfig();
+      peerConnection = createPeerConnection(peerId, config);
+    }
   } else {
-    peerConnection = createPeerConnection(peerId);
+    chatPanel.classList.remove('hidden');
+    chatBadge.classList.remove('show');
   }
 });
 
 socket.on('offer', async ({ from, offer }) => {
-  if (!peerConnection) peerConnection = createPeerConnection(from);
+  if (!peerConnection) {
+    const config = await getRtcConfig();
+    peerConnection = createPeerConnection(from, config);
+  }
   await peerConnection.setRemoteDescription(offer);
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
@@ -882,6 +968,8 @@ function cleanupConnection() {
 
 /* ---------------- Button handlers ---------------- */
 startBtn.addEventListener('click', async () => {
+  callMode = 'video';
+  appEl.classList.remove('text-mode-active');
   try {
     await initMedia();
   } catch (err) {
@@ -891,6 +979,18 @@ startBtn.addEventListener('click', async () => {
   }
   showSearching('Looking for a stranger...');
   enableLocalMediaControls(true);
+  emitFindPeer();
+});
+
+layoutToggleBtn.addEventListener('click', () => {
+  appEl.classList.toggle('split-layout');
+});
+
+messagesBtn.addEventListener('click', () => {
+  callMode = 'text';
+  appEl.classList.add('text-mode-active');
+  appEl.classList.remove('split-layout');
+  showSearching('Looking for a stranger...');
   emitFindPeer();
 });
 
@@ -998,6 +1098,9 @@ chatToggleBtn.addEventListener('click', () => {
   }
 });
 
+// Manual "Tip me" button in the top bar — always available during a call,
+// bypasses the 5-minute auto-timer, opens the chat panel straight to the
+// tip info. No navigation, so the call is untouched.
 tipMenuBtn.addEventListener('click', () => {
   tipShown = true;
   showTipPrompt();
@@ -1028,6 +1131,7 @@ function sendChat() {
 
   localVideo.addEventListener('pointerdown', (e) => {
     if (!localVideo.classList.contains('pip')) return;
+    if (appEl.classList.contains('split-layout')) return; // fixed split position, not draggable
     dragging = true;
     const rect = localVideo.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
