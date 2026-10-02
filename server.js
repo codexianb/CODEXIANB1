@@ -21,6 +21,66 @@ const app = express();
 app.set('trust proxy', true);
 app.use(express.json());
 
+// ---------------------------------------------------------------------------
+// Basic security headers (helmet). This is not "hiding the code" — anything
+// sent to a browser can be read by that browser's owner, full stop. What
+// headers like these actually do is reduce real attack surface (clickjacking,
+// MIME-sniffing, some XSS vectors) for every visitor automatically.
+// ---------------------------------------------------------------------------
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// ---------------------------------------------------------------------------
+// Simple in-memory rate limiter for noisy endpoints (not a replacement for a
+// real WAF/CDN rate limit, but stops basic abuse/spam bots).
+// ---------------------------------------------------------------------------
+function makeRateLimiter(maxRequests, windowMs) {
+  const hits = new Map(); // key -> [timestamps]
+  return function rateLimited(key) {
+    const now = Date.now();
+    const arr = (hits.get(key) || []).filter((t) => now - t < windowMs);
+    arr.push(now);
+    hits.set(key, arr);
+    return arr.length > maxRequests;
+  };
+}
+const turnRateLimited = makeRateLimiter(10, 60 * 1000); // 10 requests/min per IP
+
+// ---------------------------------------------------------------------------
+// TURN credentials endpoint. The client used to have the Metered TURN
+// username/credential hardcoded in index.html's source — visible to anyone
+// via "View Source", no inspection needed. Serving it from here means it's
+// no longer sitting in the static page; the client fetches it at runtime
+// instead. A sufficiently determined visitor can still see it in the Network
+// tab (nothing server-side can prevent that for a browser-based WebRTC app),
+// but this stops casual scraping/reuse and lets you rotate the real secret
+// (set TURN_USERNAME / TURN_CREDENTIAL as env vars on Render) without
+// redeploying the page.
+// ---------------------------------------------------------------------------
+app.get('/api/turn-credentials', (req, res) => {
+  const ip = getClientIp({ handshake: { headers: req.headers, address: req.socket.remoteAddress } });
+  if (turnRateLimited(hashIp(ip))) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  // Fallback to the existing static Metered credentials if no env vars are
+  // set yet, so this keeps working during migration.
+  const username = process.env.TURN_USERNAME || 'ba5bc2c88d309320638057a5';
+  const credential = process.env.TURN_CREDENTIAL || '5rdu5POjfqZN8x9q';
+  res.json({
+    iceServers: [
+      { urls: 'stun:stun.relay.metered.ca:80' },
+      { urls: 'turn:global.relay.metered.ca:80', username, credential },
+      { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username, credential },
+      { urls: 'turn:global.relay.metered.ca:443', username, credential },
+      { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username, credential }
+    ]
+  });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -143,7 +203,7 @@ app.post('/admin/api/unban', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------------------
 // Matching + signaling
 // ---------------------------------------------------------------------------
-let waitingQueue = [];       // { id: socket.id, country }
+let waitingQueue = [];       // { id: socket.id, country, mode }
 const partners = new Map();  // socket.id -> partner socket.id
 const socketIpHash = new Map(); // socket.id -> hashed IP (for reports/bans)
 
@@ -152,6 +212,7 @@ function broadcastActiveUsers() {
 }
 
 function isCompatible(a, b) {
+  if (a.mode !== b.mode) return false; // text-only users only match other text-only users
   return a.country === 'ANY' || b.country === 'ANY' || a.country === b.country;
 }
 
@@ -171,8 +232,8 @@ function tryMatch() {
       partners.set(entry.id, other.id);
       partners.set(other.id, entry.id);
 
-      io.to(entry.id).emit('matched', { peerId: other.id, initiator: true });
-      io.to(other.id).emit('matched', { peerId: entry.id, initiator: false });
+      io.to(entry.id).emit('matched', { peerId: other.id, initiator: true, mode: entry.mode });
+      io.to(other.id).emit('matched', { peerId: entry.id, initiator: false, mode: other.mode });
 
       tryMatch();
       return;
@@ -225,9 +286,10 @@ io.on('connection', (socket) => {
   socket.on('find-peer', (payload = {}) => {
     if (isBanned(ipHash)) { socket.disconnect(true); return; }
     const country = typeof payload.country === 'string' && payload.country ? payload.country : 'ANY';
+    const mode = payload.mode === 'text' ? 'text' : 'video';
     disconnectPartner(socket.id, 'requeued');
     waitingQueue = waitingQueue.filter((e) => e.id !== socket.id);
-    waitingQueue.push({ id: socket.id, country });
+    waitingQueue.push({ id: socket.id, country, mode });
     tryMatch();
   });
 
