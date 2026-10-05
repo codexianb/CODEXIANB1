@@ -66,10 +66,12 @@ app.get('/api/turn-credentials', (req, res) => {
   if (turnRateLimited(hashIp(ip))) {
     return res.status(429).json({ error: 'Too many requests' });
   }
-  // Fallback to the existing static Metered credentials if no env vars are
-  // set yet, so this keeps working during migration.
-  const username = process.env.TURN_USERNAME || 'ba5bc2c88d309320638057a5';
-  const credential = process.env.TURN_CREDENTIAL || '5rdu5POjfqZN8x9q';
+  const username = process.env.TURN_USERNAME;
+  const credential = process.env.TURN_CREDENTIAL;
+  // No hardcoded credentials: if the env vars aren't set, only STUN is served.
+  if (!username || !credential) {
+    return res.json({ iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }] });
+  }
   res.json({
     iceServers: [
       { urls: 'stun:stun.relay.metered.ca:80' },
