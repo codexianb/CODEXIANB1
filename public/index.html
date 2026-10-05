@@ -520,7 +520,7 @@
 <!-- Socket.io client loaded from CDN (needed since Netlify serves this page as static, not the Express/Render server) -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
-const socket = io('https://codexianb1.onrender.com', {
+const socket = io('https://codexian-27m6.onrender.com', {
   transports: ['websocket']
 });
 
@@ -730,7 +730,7 @@ let rtcConfigPromise = null;
 async function getRtcConfig() {
   if (rtcConfig) return rtcConfig;
   if (!rtcConfigPromise) {
-    rtcConfigPromise = fetch('https://codexianb1.onrender.com/api/turn-credentials')
+    rtcConfigPromise = fetch('https://codexian-27m6.onrender.com/api/turn-credentials')
       .then((r) => r.json())
       .then((data) => { rtcConfig = data; return data; })
       .catch(() => ({ iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }] }));
