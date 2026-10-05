@@ -3,13 +3,28 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Codexianb – Free Random Video Chat with Strangers</title>
-<meta name="description" content="Codexianb is a free random video chat website. Meet and talk to strangers from any country instantly. 18+ only." />
+<title>Codexianb | Free Random Video Chat with Strangers (18+)</title>
+<meta name="description" content="Codexianb is a free random video chat site. Meet and talk to strangers from around the world. Adults 18+ only, with reporting and ban tools." />
 <link rel="canonical" href="https://codexianb.site/" />
-<meta property="og:title" content="Codexianb – Video Chat with Strangers" />
-<meta property="og:description" content="Free random video chat. Get matched instantly with a stranger." />
+<meta property="og:title" content="Codexianb | Free Random Video Chat (18+)" />
+<meta property="og:description" content="Meet strangers instantly with free random video chat. 18+ only." />
 <meta property="og:url" content="https://codexianb.site/" />
 <meta property="og:type" content="website" />
+<meta name="robots" content="index, follow" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Codexianb",
+  "url": "https://codexianb.site/",
+  "applicationCategory": "SocialNetworkingApplication",
+  "operatingSystem": "Any (web browser)",
+  "description": "Free random video chat with strangers. Adults 18+ only.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.gate-links{margin-top:18px;font-size:12px;opacity:.8}.gate-links a{color:var(--accent);margin:0 6px}</style>
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
 <style>
   :root{
@@ -359,6 +374,7 @@
 </style>
 </head>
 <body>
+<h1 class="sr-only">Free Random Video Chat with Strangers</h1>
 
 <div id="app">
   <!-- AGE GATE (shown once per browser until accepted) -->
@@ -368,6 +384,9 @@
     <div class="gate-actions">
       <button id="ageDeclineBtn" class="gate-btn gate-btn--decline">Leave</button>
       <button id="ageAcceptBtn" class="gate-btn gate-btn--accept">I'm 18+, continue</button>
+    </div>
+    <div class="gate-links">
+      <a href="/about.html">About</a> · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a> · <a href="/guidelines.html">Guidelines</a>
     </div>
   </div>
 
